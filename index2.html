@@ -1,0 +1,1373 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Homework 8</title>
+
+    <base target="_blank" />
+	<link rel="stylesheet" href="https://code.jquery.com/ui/1.11.4/themes/smoothness/jquery-ui.css">
+	<script src="https://code.jquery.com/jquery-1.10.2.js"></script>
+	<script src="https://code.jquery.com/ui/1.11.4/jquery-ui.js"></script>
+
+    <script src= "https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.12.0/moment.min.js"></script>
+
+
+    
+	<script src="https://code.jquery.com/jquery-migrate-1.2.1.min.js"></script>
+	<script src="https://code.jquery.com/ui/1.11.4/jquery-ui.js"></script>
+
+
+    <link href="https://gitcdn.github.io/bootstrap-toggle/2.2.2/css/bootstrap-toggle.min.css" rel="stylesheet">
+    <script src="https://gitcdn.github.io/bootstrap-toggle/2.2.2/js/bootstrap-toggle.min.js"></script>
+
+    <script type="text/javascript" src="http://code.highcharts.com/stock/highstock.js"></script>
+    <!--script type="text/javascript" src="http://markitondemand.github.io/DataApis/InteractiveChartSample/resources/InteractiveChartApi.js"></script-->
+	
+    <script type="text/javascript" src="http://markitondemand.github.io/DataApis/InteractiveChartSample/resources/purl.js"></script>
+
+	<!-- Latest compiled and minified CSS -->
+	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">
+
+	<!-- Optional theme -->
+	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap-theme.min.css" integrity="sha384-fLW2N01lMqjakBkx3l/M9EahuwpSfeNvV63J5ezn3uZzapT0u7EYsXMjQV+0En5r" crossorigin="anonymous">
+
+	<!-- Latest compiled and minified JavaScript -->
+	<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js" integrity="sha384-0mSbJDEHialfmuBBQP6A4Qrprq5OVfW37PRR3j5ELqxss1yVqOtnepnHVP9aJ7xS" crossorigin="anonymous"></script>
+
+    <script type="text/javascript">
+                /** 
+         * Version 2.0
+         */
+        var Markit = {};
+        /**
+         * Define the InteractiveChartApi.
+         * First argument is symbol (string) for the quote. Examples: AAPL, MSFT, JNJ, GOOG.
+         * Second argument is duration (int) for how many days of history to retrieve.
+         */
+        Markit.InteractiveChartApi = function(symbol,duration){
+            this.symbol = symbol.toUpperCase();
+            this.duration = duration;
+            this.PlotChart();
+        };
+
+        Markit.InteractiveChartApi.prototype.PlotChart = function(){
+            
+            var params = {
+                parameters: JSON.stringify( this.getInputParams() )
+            }
+            // console.log(params);
+
+            //Make JSON request for timeseries data
+            $.ajax({
+                // beforeSend:function(){
+                //     $("#chartDemoContainer").text("Loading chart...");
+                // },
+                data: {para:params},
+
+                url: "index.php",
+                dataType: "json",
+                context: this,
+                success: function(json){
+                    //Catch errors
+                    console.log(json);
+                    if (!json || json.Message){
+                        console.error("Error: ", json.Message);
+                        return;
+                    }
+                    this.render(json);
+                },
+                error: function(response,txtStatus){
+                    console.log(response,txtStatus)
+                }
+            });
+        };
+
+        Markit.InteractiveChartApi.prototype.getInputParams = function(){
+            return {  
+                Normalized: false,
+                NumberOfDays: this.duration,
+                DataPeriod: "Day",
+                Elements: [
+                    {
+                        Symbol: this.symbol,
+                        Type: "price",
+                        Params: ["ohlc"] //ohlc, c = close only
+                    }
+                ]
+                //,LabelPeriod: 'Week',
+                //LabelInterval: 1
+            }
+        };
+
+        Markit.InteractiveChartApi.prototype._fixDate = function(dateIn) {
+            var dat = new Date(dateIn);
+            return Date.UTC(dat.getFullYear(), dat.getMonth(), dat.getDate());
+        };
+
+        Markit.InteractiveChartApi.prototype._getOHLC = function(json) {
+            var dates = json.Dates || [];
+            var elements = json.Elements || [];
+            var chartSeries = [];
+
+            if (elements[0]){
+
+                for (var i = 0, datLen = dates.length; i < datLen; i++) {
+                    var dat = this._fixDate( dates[i] );
+                    var pointData = [
+                        dat,
+                        elements[0].DataSeries['open'].values[i],
+                        elements[0].DataSeries['high'].values[i],
+                        elements[0].DataSeries['low'].values[i],
+                        elements[0].DataSeries['close'].values[i]
+                    ];
+                    chartSeries.push( pointData );
+                };
+            }
+            return chartSeries;
+        };
+
+        Markit.InteractiveChartApi.prototype._getVolume = function(json) {
+            var dates = json.Dates || [];
+            var elements = json.Elements || [];
+            var chartSeries = [];
+
+            if (elements[1]){
+
+                for (var i = 0, datLen = dates.length; i < datLen; i++) {
+                    var dat = this._fixDate( dates[i] );
+                    var pointData = [
+                        dat,
+                        elements[1].DataSeries['volume'].values[i]
+                    ];
+                    chartSeries.push( pointData );
+                };
+            }
+            return chartSeries;
+        };
+
+        Markit.InteractiveChartApi.prototype.render = function(data) {
+            //console.log(data)
+            // split the data set into ohlc and volume
+            var ohlc = this._getOHLC(data);
+                
+
+            // create the chart
+            $('#chartDemoContainer').highcharts('StockChart', {
+                
+                rangeSelector: {
+
+                    selected: 0,
+                    allButtonsEnabled: true,
+                    inputEnabled: false,
+                    buttons: [{
+                        type: 'week',
+                        count: 1,
+                        text: '1w'
+                    }, 
+                        {
+                        type: 'month',
+                        count: 1,
+                        text: '1m'
+                    }, {
+                        type: 'month',
+                        count: 3,
+                        text: '3m'
+                    }, {
+                        type: 'month',
+                        count: 6,
+                        text: '6m'
+                    }, {
+                        type: 'ytd',
+                        text: 'YTD'
+                    }, {
+                        type: 'year',
+                        count: 1,
+                        text: '1y'
+                    }, {
+                        type: 'all',
+                        text: 'All'
+                    }]
+                },
+
+                title: {
+                    text: this.symbol + ' Historical Price'
+                },
+
+                yAxis: [{
+                    title: {
+                        text: 'Stock Value'
+                    },
+                    // height: 300,
+                    // lineWidth: 2
+                    min: 0
+                }],
+                
+                series : [{
+                    name : 'AAPL Stock Price',
+                    data : ohlc,
+                    type : 'area',
+                    threshold : null,
+                    tooltip : {
+                        valueDecimals : 2
+                    },
+                    fillColor : {
+                        linearGradient : {
+                            x1: 0,
+                            y1: 0,
+                            x2: 0,
+                            y2: 1
+                        },
+                        stops : [
+                            [0, Highcharts.getOptions().colors[0]],
+                            [1, Highcharts.Color(Highcharts.getOptions().colors[0]).setOpacity(0).get('rgba')]
+                        ]
+                    }
+                }],
+            });
+        };
+
+
+
+    </script>
+
+	<style>
+
+		html {
+	  		min-height: 100%;
+		}
+
+		body {
+			background-color: rgba(43,101,131,1);
+			background: linear-gradient(rgba(43,101,131,1), rgba(14,53,74,1)); /* Standard syntax */
+			min-height: 100%;
+			/*text-align: center;*/
+		}
+
+
+		#mainform {
+			/*color: white;*/
+			padding: 15px 15px;
+			background-color: white;
+			border-radius: 10px;
+			width: 80%;
+			margin-left: 10%;
+			/*padding-top: 10px;*/
+		}
+
+
+
+        #answersection {
+            /*color: white;*/
+            padding: 15px 15px;
+            background-color: white;
+            border-radius: 10px;
+            width: 80%;
+            margin-left: 10%;
+            /*margin-top: 10px;*/
+        }
+
+
+		.capital {
+
+			font-family: sans-serif;
+    		font-size: large;
+
+		}
+
+		.label {
+			font-family: sans-serif;
+    		font-size: 14px;
+		}
+
+		.hr1 {
+
+			width: 80%;
+		}
+
+        .panel-body {
+            padding: 25px;
+        }
+
+        .customize {
+            background-color: #F7F3F3;
+            background: linear-gradient(rgba(233,233,233,1), rgba(245,245,245,1));
+            border-radius: 10px;
+            margin-bottom: 20px;
+            padding: 20px
+
+        }
+
+	</style>
+
+
+
+	<script>
+
+	flag = false;
+	symbol = "";
+    var _interval;
+    var current_symbol = "";
+    var Current_obj;
+    
+      window.fbAsyncInit = function() {
+        FB.init({
+          appId      : '1081094425288476',
+          xfbml      : true,
+          version    : 'v2.5'
+        });
+      };
+
+      (function(d, s, id){
+         var js, fjs = d.getElementsByTagName(s)[0];
+         if (d.getElementById(id)) {return;}
+         js = d.createElement(s); js.id = id;
+         js.src = "//connect.facebook.net/en_US/sdk.js";
+         fjs.parentNode.insertBefore(js, fjs);
+       }(document, 'script', 'facebook-jssdk'));
+
+
+            // $('#chartDemoContainer').highcharts().reflow();
+
+
+
+
+            $(document).on('shown.bs.tab', '#highchart', function(e) {
+                var chart = $("#chartDemoContainer").highcharts();
+                if (chart != undefined)
+                    chart.reflow();
+            })
+
+
+	$(function() {
+
+	    $("#autocomplete")
+	      .focus()
+	      .autocomplete({
+	        source: function(request,response) {
+	          $.ajax({
+	            // beforeSend: function(){ 
+	            //   $("span.help-inline").show();
+	            //   $("span.label-info").empty().hide();
+	            // },
+	            url: "index.php",
+	            dataType: "json",
+	            data: {
+	              input: request.term
+	            },
+	            success: function(data) {
+                    // console.log(data)
+	              if(data.length==0){
+	              	flag = false;
+	              	// alert("null");
+	              }
+				  // else {
+				  // 	flag = true;
+				  // }
+
+	              response( $.map(data, function(item) {
+
+	                return {
+
+                        
+
+	                  label: item.Symbol + " - " + item.Name + " (" +item.Exchange+ ")",
+	                  value: item.Symbol
+	                  
+	                }
+	              }));
+	              // $("span.help-inline").hide();
+	            }
+	            // error:function(data,status){
+             //        alert("error");
+             //    }
+	          });
+	        },
+	        minLength: 0,
+	        select: function( event, ui ) {
+	          //console.log(ui.item);
+	          $("span.label-info").html("You selected " + ui.item.label).fadeIn("fast");
+	          
+	          
+	        },
+	        open: function() {
+	          $(this).removeClass("ui-corner-all").addClass("ui-corner-top");
+	        },
+	        close: function() {
+	          $(this).removeClass("ui-corner-top").addClass("ui-corner-all");
+	        }
+	      })
+	    ;
+	  });
+
+
+
+	  $(document).ready(function(){
+	  	// $("#test").html('nsdjbsjdb');
+        // console.log(flag);
+		 $("#mainform").submit(function() {  
+            $.ajax({
+                url: "index.php",
+                dataType: "json",
+                data: {
+                  input: $('#autocomplete').val()
+                },
+
+                success: function(data) {
+                    // console.log(data)
+                  if(data.length==0){
+                    return false;
+
+                    }
+                    // alert("null");
+                    for (var i = 0; i < data.length; i++) {
+                        // var obj = JSON.parse(data[i]);
+
+                        if (data[i].Symbol == $('#autocomplete').val()) {
+                            $("#test").html("");
+                            sym = $("#autocomplete").val();
+                            $.ajax({
+                                type: "GET",
+                                // crossDomain: true,
+                                url: "index.php",
+                                data: {
+                                  Symbol: sym
+                                },
+                                success: function(output) {
+
+
+                                    var obj = JSON.parse(output);
+
+                                    display(obj);
+
+                                },
+
+                                error:function(data,status){
+                                    
+                                    console.log('hehe');
+                                    
+                                }
+                                // return false;
+                            });
+
+                            return true;
+            
+                        }
+
+                    }
+      
+                $("#test").html("Select a valid entry");
+                return false;
+             
+              }
+
+            });
+        });
+    });
+
+
+			
+			
+
+    function display(obj) {
+
+
+
+
+        var stockjson = obj.market;
+
+        Current_obj = stockjson;
+
+
+        var Name = stockjson.Name;
+        var Symbol = stockjson.Symbol;
+        var LastPrice = stockjson.LastPrice.toFixed(2);
+        var Change = stockjson.Change.toFixed(2);
+        var ChangePercent = stockjson.ChangePercent.toFixed(2);
+        var Timestamp = stockjson.Timestamp;  
+        var MarketCap = stockjson.MarketCap;
+        var Volume = stockjson.Volume;
+        var ChangeYTD = stockjson.ChangeYTD.toFixed(2); 
+        var ChangePercentYTD = stockjson.ChangePercentYTD.toFixed(2);
+        var High = stockjson.High.toFixed(2);
+        var Low = stockjson.Low.toFixed(2);
+        var Open = stockjson.Open.toFixed(2);
+
+        if (localStorage.getItem(Symbol) != null) {
+            // console.log(Symbol);
+            // console.log('yes!');
+            $('#stargraph').removeClass();
+            $('#stargraph').addClass('glyphicon glyphicon-star');
+            $('#stargraph').css("color","yellow");
+
+        }
+
+        else {
+            // console.log(Symbol);
+            // console.log('No!');
+            $('#stargraph').removeClass();
+            $('#stargraph').addClass('glyphicon glyphicon-star-empty');
+            $('#stargraph').css("color","black");
+
+        }
+
+
+
+
+        var jsonlist = obj.newsfeed.d.results;
+
+        // var content = '<div class="panel panel-default"><div class="panel-heading"><div class="row"><div class="col-md-4"><a href="#myCarousel" data-slide="prev"> <button type="button" class="btn btn-default"> <span class="glyphicon glyphicon-menu-left" aria-hidden="true"></span></button> </a></div> <div class="col-md-4"><center>Stock Details</center></div><div class="col-md-4"> </div> </div></div>';
+
+        // content+='<div class="panel-body"><div class="tabbable"> <ul class="nav nav-pills"><li role="presentation" class="active" ><a href="#tab1" data-toggle="tab"><span class = "glyphicon glyphicon-dashboard"></span> Current Stock</a></li><li role="presentation"><a href="#tab2" data-toggle="tab" id = "highchart"><span class = "glyphicon glyphicon-stats"></span> Historical Charts</a></li><li role="presentation"><a href="#tab3" data-toggle="tab"><span class = "glyphicon glyphicon-link"></span> News Feeds</a></li></ul>';
+
+        // content+='<div class="tab-content"><div class="tab-pane active" id="tab1"><hr><div class = "tab-content"><div class="col-md-6"><div class = "row"><h5> Stock Details</h5><br></div><div class = "row"> <table class="table table-striped">';
+
+
+        var a=document.getElementById("searchresult").getElementsByTagName("td");
+        for (var i=0;i<a.length;i++) {
+            if (a.innerHTML == "") {
+                 a.innerHTML = mycars[i];
+            };
+
+        }
+
+        var content = "";
+        content += '<tr><td>Name</td><td>' + Name +'</td></tr>';
+        content += '<tr><td>Symbol</td> <td>' + Symbol +'</td></tr>';
+        content += '<tr><td>Last Price</td><td>$' +LastPrice+ '</td></tr>';
+
+
+        if (ChangePercent > 0) {
+            content += '<tr><td>Change (Change Percent)</td><td style = "color:green">' +Change + ' (' + ChangePercent +'%) <img src = "src/up.png"> </td></tr>';
+        }
+        else if (ChangePercent < 0) {
+            content += '<tr><td>Change (Change Percent)</td><td style = "color:red">' +Change + ' (' + ChangePercent +'%) <img src = "src/down.png"> </td></tr>';
+        }
+        else {
+            content += '<tr><td>Change (Change Percent)</td><td>' +Change + ' (' + ChangePercent +'%) </td></tr>';
+        }
+        
+        
+
+        
+        content += '<tr><td>Time and Date</td><td>' + moment(Timestamp).format("DD MMMM YYYY, h:mm:ss a") + '</td></tr>';
+        
+        if (MarketCap >= 1000000000) {
+            content += '<tr><td>Market Cap</td><td>' +(MarketCap/1000000000).toFixed(2) +' Billion</td> </tr>';
+
+        }
+        else if (MarketCap >=1000000) {
+            content += '<tr><td>Market Cap</td><td>' +(MarketCap/1000000).toFixed(2) +' Million</td> </tr>';
+        }
+
+        else {
+            content += '<tr><td>Market Cap</td><td>' +MarketCap +'</td> </tr>';
+        }
+
+
+        
+        
+
+
+
+        content += '<tr><td>Volume</td><td>'+ Volume +'</td></tr>';
+
+
+        if (ChangePercentYTD > 0) {
+            content += '<tr><td>Change YTD (Change Percent YTD)</td><td style = "color:green">'+ ChangeYTD + ' ('+ChangePercentYTD +'%)<img src = "src/up.png"</td></tr>';
+        }
+        else if (ChangePercentYTD < 0) {
+            content += '<tr><td>Change YTD (Change Percent YTD)</td><td style = "color:red">'+ ChangeYTD + ' ('+ChangePercentYTD +'%)<img src = "src/down.png"</td></tr>';
+        }
+        else {
+            content += '<tr><td>Change YTD (Change Percent YTD)</td><td>'+ ChangeYTD + ' ('+ChangePercentYTD +'%)</td></tr>';
+        }
+
+                                           
+        content += '<tr><td>High Price</td><td>'+High +'</td></tr>';
+        content += '<tr><td>Low Price</td><td>'+Low +'</td></tr>';
+        content += '<tr><td>Opening Price</td><td>'+Open+'</td></tr>';
+        $('#markettable').empty();  
+        $('#markettable').append(content);
+        current_symbol = Symbol;
+
+
+        content = '<img src="http://chart.finance.yahoo.com/t?s='+Symbol+'&lang=en-US&width=800&height=600" style = "width:100%;height:100%;"></img>';
+
+        $('#image01').empty();  
+        $('#image01').append(content);       
+
+
+
+        // content += '<div class="col-md-6"><div class = "row" align="right" style = "padding-top:10px;"><img src = "fb.png" style="width:40px;height:40px" onclick = "shareDialog()">  <button id = "star" type="button" class="btn btn-default" style="width:40px;height:40px;margin-right: 20px;"><span style = "" class = "glyphicon glyphicon-star-empty">  </span> </button> </div><div class = "row" style="width: 90%;margin-left:10%;" align = "center"><img src="http://chart.finance.yahoo.com/t?s='+ Symbol+'&lang=en-US&width=800&height=600" style = "width:100%;height:100%;"></img></div></div></div></div>';
+
+        // content += '<div class="tab-pane" id="tab2"><hr><div id="chartDemoContainer" style="height: 500px; min-width: 500px; margin-bottom: 30px;"></div></div>';
+
+
+        content = "";
+
+        for (var i = 0; i < jsonlist.length; i++) {
+            var obj2 = jsonlist[i];
+            
+
+            content += '<div class = "customize"> <a href = ' +obj2.Url+ ' > ';
+            content += obj2.Title + '</a>';
+
+            
+
+            content += '<p style = "margin-top: 10px">'+ obj2.Description +' </p>';
+
+        
+            content += '<p style = "margin-top: 40px;font-weight:500;">Publisher: ' +  obj2.Source  +'</p>';
+            content += '<p style = "margin-top: 10px;font-weight:500;">Date: ' + obj2.Date +'</p></div>';
+
+            // console.log(obj2.Description);
+            // console.log(obj2.Source);
+            // console.log(obj2.Date);
+        };
+
+
+        // console.log(content);
+        
+        
+        $('#tab3').empty();  
+        $('#tab3').append('<hr>'+content);      
+
+
+
+        var sym = $.url().param('symbol') || Symbol;
+        // console.log(sym);
+        var dur = $.url().param('duration') || 1095;
+        // console.log(dur);
+        new Markit.InteractiveChartApi(sym, dur);
+
+        $('#nextlink').removeAttr('disabled');
+        $('#nextli').attr('href',"#myCarousel");
+        $('#nextli').removeAttr('disabled');
+
+        if ($('#searchresult').attr('class') != "item active") {
+            document.getElementById("nextlink").click();
+        }
+
+        
+
+      }
+
+
+        function shareDialog(){  //title,url,price,location,src,ref,obj
+
+
+            console.log(Current_obj);
+
+            var url = "http://dev.markitondemand.com/";
+            var name ="Current Stock Price of company name is "+'$' + Current_obj.LastPrice.toFixed(2);
+            var caption = "Last Traded Price: " + Current_obj.LastPrice.toFixed(2) + ", Change:" + Current_obj.Change.toFixed(2)+ "(" +(Current_obj.ChangePercent).toFixed(2) + "%)" ;
+            var description = "Stock Information of " + Current_obj.Name +" ("+Current_obj.Symbol+")";
+            var src = "http://chart.finance.yahoo.com/t?s="+Current_obj.Symbol+"&lang=en-US&width=400&height=300";
+
+            FB.ui({
+              method: 'feed',
+              link: url,
+              name: name,
+              caption: caption,
+              description: description,
+              picture: src
+            }, function(response){
+                if (response && !response.error_code) {
+                    alert('Posted Successfully');
+                } else {
+                    alert('Not Posted');
+                }
+            });
+        }
+
+
+        function secondtab(sym) {
+            // console.log(sym);
+            $.ajax({
+                type: "GET",
+                // crossDomain: true,
+                url: "index.php",
+                // dataType: "jsonp",
+                data: {
+                  Symbol: sym
+                },
+                // data: {Symbol:"AA"},
+                // dataType: 'json',
+                success: function(output) {
+
+                    // console.log(output);
+
+                    var obj = JSON.parse(output);
+
+
+                    display(obj);
+
+                },
+
+                error:function(data,status){
+                    
+                    // console.log('hehe');
+                    
+                }
+                // return false;
+            });
+            return true;
+
+        }
+
+
+        function re() {
+
+
+            if ($('#page1').attr('class') != "item active") {
+                document.getElementById("prevlink").click();
+            }
+            $('#nextlink').attr('disabled','disabled');
+            $('#nextli').attr("disabled", "disabled");
+            $('#nextli').removeAttr('href');
+            // nextli.href = "javascript:void(0);";  
+
+
+
+
+            $('#markettable').empty();  
+            $('#image01').empty();  
+            $('#tab3').empty();  
+            $('#chartDemoContainer').empty();
+            $("#test").html("");
+            $('#autocomplete').val("");
+            current_symbol = "";
+        }
+
+
+        function createlist(key) {
+            $.ajax({
+                type: "GET",
+                // crossDomain: true,
+                url: "index.php",
+                // dataType: "jsonp",
+                data: {
+                  Symbol: key
+                },
+                // data: {Symbol:"AA"},
+                // dataType: 'json',
+                success: function(output) {
+
+                    // console.log(output);
+
+                    var obj = JSON.parse(output);
+                    var stockjson = obj.market;
+
+                    // console.log(stockjson);
+
+                    var content = "";
+                    content+= '<tr><td><button name = "SB" type="button" class="btn btn-link" value ='+ key+' onclick = "secondtab(this.value);">'+key+'</button></td><td>'+stockjson.Name+'</td>';
+                    
+
+                    
+     
+                        content += '<td name = "SP">$'+stockjson.LastPrice.toFixed(2)+'</td>';
+                    
+
+                    if (stockjson.ChangePercent > 0) {
+                        content += '<td name = "SC" style = "color:green">'+stockjson.Change.toFixed(2)+' ('+ stockjson.ChangePercent.toFixed(2)+'%) <img src = "src/up.png"></td>';
+
+                    }
+                    else if (stockjson.ChangePercent < 0) {
+                        content += '<td name = "SC" style = "color:red">'+stockjson.Change.toFixed(2)+' ('+ stockjson.ChangePercent.toFixed(2)+'%) <img src = "src/down.png"></td>';
+                    }
+                    
+                    else {
+                        content += '<td name = "SC">'+stockjson.Change.toFixed(2)+' ('+ stockjson.ChangePercent.toFixed(2)+'%)</td>';
+                    }
+
+                    if (stockjson.MarketCap >= 1000000000) {
+                        content += '<td>' +(stockjson.MarketCap/1000000000).toFixed(2) +' Billion</td>';
+
+                    }
+                    else if (stockjson.MarketCap >=1000000) {
+                        content += '<td>' +(stockjson.MarketCap/1000000).toFixed(2) +' Million</td>';
+                    }
+
+                    else {
+                        content += '<td>' +stockjson.MarketCap +'</td>';
+                    }
+
+                    content += '<td><button type="button" class="btn btn-default btn" onclick="deleteRow(this)"> <span class="glyphicon glyphicon-trash" aria-hidden="true"></span> </button> </td> </tr> ';
+
+                    $('#table1').append(content);
+                    
+                },
+
+                error:function(data,status){
+                    
+                    // console.log('hehe');
+                    
+                }
+                // return false;
+            });
+
+        }
+
+
+        function refresh() {
+
+
+            var SymbolList = document.getElementsByName('SB');
+            var priceList = document.getElementsByName('SP');
+            var changeList = document.getElementsByName('SC');
+
+            // var i = 0;
+
+            var a = {};
+
+            for (var i = 0; i < SymbolList.length; i++) {
+                a[SymbolList[i].value] = i;
+            };
+
+
+
+
+
+            for (var j = 0; j < SymbolList.length; j++) {   
+
+                $.ajax({
+                    type: "GET",
+                    // crossDomain: true,
+                    url: "index.php",
+                    // dataType: "jsonp",
+                    data: {
+                      Symbol: SymbolList[j].value
+                    },
+                    // data: {Symbol:"AA"},
+                    // dataType: 'json',
+                    success: function(output) {
+                        
+                        var obj = JSON.parse(output);
+
+
+                        var stockjson = obj.market;
+                        var sy = stockjson.Symbol;
+
+                        priceList[a[sy]].innerHTML = '$'+(stockjson.LastPrice.toFixed(2));
+
+                        // content += '<td name = "SP">$'+price.toFixed(2)+'</td>';
+
+                        if (stockjson.ChangePercent > 0) {
+                            changeList[a[sy]].innerHTML = '<td name = "SC" style = "color:green">'+stockjson.Change.toFixed(2)+' ('+ stockjson.ChangePercent.toFixed(2)+'%) <img src = "src/up.png"></td>';
+                        }
+
+                        else if (ChangePercent < 0) {
+                            changeList[a[sy]].innerHTML = '<td name = "SC" style = "color:red">'+stockjson.Change.toFixed(2)+' ('+ stockjson.ChangePercent.toFixed(2)+'%) <img src = "src/down.png"></td>';
+                        }
+                        
+                        else {
+                            changeList[a[sy]].innerHTML = '<td name = "SC">'+stockjson.Change.toFixed(2)+' ('+ stockjson.ChangePercent.toFixed(2)+'%)</td>';
+                        }
+                        // i++;
+                    },
+
+                    error:function(data,status){
+                        
+                        // console.log('hehe');
+                        
+                    }
+                    // return false;
+                });
+                
+            };
+
+        }
+
+
+
+        $(function() {
+            $('#toggle-event').change(function() {
+
+                if ($(this).prop('checked') == true) {
+                    // refresh();
+                    
+                    _interval = setInterval("refresh()", 5000);
+                }
+
+                else {
+                    clearInterval(_interval);
+                }
+                
+
+            })
+        })
+
+
+        function deleteRow(r) {
+
+            var i=r.parentNode.parentNode.rowIndex;
+            var t = document.getElementById('table1');
+            
+            // localStorage.
+            localStorage.removeItem(t.rows[i].cells[0].childNodes[0].value);
+
+            // console.log(t.rows[i].cells[0].childNodes[0].value);
+            
+            var sym = t.rows[i].cells[0].childNodes[0].value;
+            t.deleteRow(i);
+
+            // var t2 = document.getElementById('markettable');
+
+
+            if(sym ==  current_symbol) {
+                $('#stargraph').removeClass();
+                $('#stargraph').addClass('glyphicon glyphicon-star-empty');
+                $('#stargraph').css("color","black");
+            }
+        }
+
+
+
+
+        function favor() {
+
+            console.log('in');
+
+            if ($('#stargraph').attr('class') != "glyphicon glyphicon-star") {
+                $('#stargraph').removeClass();
+                $('#stargraph').addClass('glyphicon glyphicon-star');
+                $('#stargraph').css("color","yellow");
+
+                var t = document.getElementById('markettable');
+
+                var Symbol = Current_obj.Symbol;
+                var Name = Current_obj.Name;
+                var price = Current_obj.LastPrice;
+                var Change = Current_obj.Change;
+                var ChangePercent = Current_obj.ChangePercent;
+                var MarketCap = Current_obj.MarketCap;
+
+            
+
+
+                localStorage.setItem(Symbol,Symbol);
+
+
+                var content = "";
+                    content+= '<tr><td><button name = "SB" type="button" class="btn btn-link" value ='+ Symbol+' onclick = "secondtab(this.value);">'+Symbol+'</button></td><td>'+Name+'</td>';
+                    
+
+                    
+     
+                    content += '<td name = "SP">$'+price.toFixed(2)+'</td>';
+                    
+
+                    if (ChangePercent > 0) {
+                        content += '<td name = "SC" style = "color:green">'+Change.toFixed(2)+' ('+ ChangePercent.toFixed(2)+'%) <img src = "src/up.png"></td>';
+
+                    }
+                    else if (ChangePercent < 0) {
+                        content += '<td name = "SC" style = "color:red">'+Change.toFixed(2)+' ('+ ChangePercent.toFixed(2)+'%) <img src = "src/down.png"></td>';
+                    }
+                    
+                    else {
+                        content += '<td name = "SC">'+Change.toFixed(2)+' ('+ ChangePercent.toFixed(2)+'%)</td>';
+                    }
+
+                    if (MarketCap >= 1000000000) {
+                        content += '<td>' +(MarketCap/1000000000).toFixed(2) +' Billion</td>';
+
+                    }
+                    else if (MarketCap >=1000000) {
+                        content += '<td>' +(stockjson.MarketCap/1000000).toFixed(2) +' Million</td>';
+                    }
+
+                    else {
+                        content += '<td>' +MarketCap +'</td>';
+                    }
+
+                    content += '<td><button type="button" class="btn btn-default btn" onclick="deleteRow(this)"> <span class="glyphicon glyphicon-trash" aria-hidden="true"></span> </button> </td> </tr> ';
+
+                    $('#table1').append(content);
+
+
+
+
+
+
+
+
+                // $('#table1').append('<tr><td><button name = "SB" type="button" class="btn btn-link" value ='+ Symbol+' onclick = "secondtab(this.value);">'+Symbol+'</button></td><td>'+Name+'</td> <td name = "SP">'+price+'</td> <td name = "SC">'+Change+' </td><td>'+MarketCap+'</td><td><button type="button" class="btn btn-default btn" onclick="deleteRow(this)"> <span class="glyphicon glyphicon-trash" aria-hidden="true"></span> </button> </td> </tr> ');
+            }
+
+
+            else {
+                
+                $('#stargraph').removeClass();
+                $('#stargraph').addClass('glyphicon glyphicon-star-empty');
+                $('#stargraph').css("color","black");
+
+
+                // var i=r.parentNode.parentNode.rowIndex;
+                var table1 = document.getElementById('table1');
+                var t = document.getElementsByName('SB');
+                
+                for (var i = 0; i < t.length; i++) {
+                    if (t[i].value == current_symbol) {
+                        localStorage.removeItem(current_symbol);
+                        table1.deleteRow(i+1);
+                        // console.log(i+1);
+                        break;
+                    }
+                }
+                // console.log('in');
+
+                // // localStorage.
+                // localStorage.removeItem(t.rows[i].cells[0].childNodes[0].value);
+
+                // // console.log(t.rows[i].cells[0].childNodes[0].value);
+                
+                // var sym = t.rows[i].cells[0].childNodes[0].value;
+                // t.deleteRow(i);
+
+                // // var t2 = document.getElementById('markettable');
+
+
+                // if(sym ==  current_symbol) {
+                //     $('#stargraph').removeClass();
+                //     $('#stargraph').addClass('glyphicon glyphicon-star-empty');
+                //     $('#stargraph').css("color","black");
+                // }
+            }
+
+        }
+
+
+        // function display(result){
+        //     var display=document.getElementById("display");
+        //     var ack=result["ack"];
+        //     var resultCount=result['resultCount'];
+        //     if (ack=='success' || resultCount=='0'){
+        //         display.innerHTML="<h1><b>No results found</b></h1>";
+        //     }
+        //     else{
+        //         pageNumber=result['pageNumber'];
+        //         var itemCount=result['itemCount'];
+        //         var bound=0;
+        //         var content="<h2><b>"+parseInt(parseInt(parseInt(pageNumber-1)*itemCount)+1)+"-";
+        //         if (parseInt(pageNumber)*itemCount<=resultCount){
+        //             content+=parseInt(pageNumber)*itemCount+" items out of "+resultCount+"</b></h2>";
+        //             bound=result.itemCount;
+        //         }
+        //         else {
+        //             content+=resultCount+" items out of "+resultCount+"</b></h2>";
+        //             bound=resultCount-parseInt(parseInt(pageNumber-1)*itemCount);
+        //         }
+                
+        //         for (var i=0;i<bound;i++){
+        //             var itemNum="item"+i;
+        //             var item=result[itemNum];
+        //             var basicInfo=item['basicInfo'];
+        //             var sellerInfo=item['sellerInfo'];
+        //             var shippingInfo=item['shippingInfo'];
+        //             var title=basicInfo['title'];
+        //             var pictureURLSuperSize=basicInfo['pictureURLSuperSize'];
+        //             content+="<div class='media' ><div class='media-left col-xs-2 col-md-3'><a href='#' class='thumbnail'><img width='100%' id='imgModal' onclick='showModal(&quot;"+title+"&quot;,&quot;"+pictureURLSuperSize+"&quot)' data-toggle='modal' src="+basicInfo['galleryURL']+"/></a></div><div class='media-body'><h4 class='media-heading'><a style='font-size:20px' href="+basicInfo['viewItemURL']+">"+basicInfo['title']+"</a></h4><p><b>Price:$"+basicInfo['convertedCurrentPrice']+"</b>";
+        //             if (basicInfo['shippingServiceCost']=='0.0' || basicInfo['shippingServiceCost']==''){
+        //                 content+="(FREE Shipping)";
+        //             }
+        //              else {
+        //                 content+="($"+basicInfo['shippingServiceCost']+")";
+        //             }
+        //             content+="&nbsp;";                 
+        //             content+="<i>Location:</i>"+basicInfo['location'];
+        //             content+="&nbsp;";
+        //             if (basicInfo['topRatedListing']=='true'){
+        //                 content+="<img src='http://cs-server.usc.edu:45678/hw/hw8/itemTopRated.jpg' style='width:30px;height:30px'>";
+        //             }
+        //             content+="&nbsp;";
+        //             var details="details"+i;
+        //             var detailsHref="#collapseDetails"+i;
+        //             content+="<a id="+details+" data-toggle='collapse' href="+detailsHref+" aria-expanded='false' aria-controls='collapseDetails'>View Details</a>";
+        //             content+="&nbsp;";
+        //             content+="<img onclick='shareDialog(&quot;"+basicInfo['title']+"&quot;,&quot;"+basicInfo['viewItemURL']+"&quot;,&quot;"+basicInfo['convertedCurrentPrice']+"&quot;,&quot;"+basicInfo['location']+"&quot;,&quot;"+basicInfo['galleryURL']+"&quot;)' src='http://cs-server.usc.edu:45678/hw/hw8/fb.png' style='width:20px;height:20px'></p>";
+        //             var collapseDetails="collapseDetails"+i;
+        //             var a_basicinfo="#BasicInfo"+i;
+        //             var a_sellerinfo="#SellerInfo"+i;
+        //             var a_shippinginfo="#ShippingInfo"+i;
+        //             var tab_basicinfo="BasicInfo"+i;
+        //             var tab_sellerinfo="SellerInfo"+i;
+        //             var tab_shippinginfo="ShippingInfo"+i;
+        //             content+="<div class='collapse' id="+collapseDetails+" role='tabpanel'><ul class='nav nav-tabs' role='tablist'><li role='presentation' class='active'><a  href="+a_basicinfo+" aria-controls='BasicInfo' role='tab' data-toggle='tab'>Basic Info</a></li><li role='presentation'><a href="+a_sellerinfo+" aria-controls='SellerInfo' role='tab' data-toggle='tab'>Seller Info</a></li><li role='presentation'><a href="+a_shippinginfo+" aria-controls='ShippingInfo' role='tab' data-toggle='tab'>Shipping Info</a></li></ul>";
+        //             content+="<div class='tab-content'><div role='tabpanel' class='tab-pane active' id="+tab_basicinfo+"><table><tr><td class='tab_td'><b>Category name</b></td><td>"+basicInfo['categoryName']+"</td></tr><tr><td class='tab_td'><b>Condition</b></td><td>"    +basicInfo['conditionDisplayName']+"</td></tr><tr><td class='tab_td'><b>Buying format</b></td><td>"+basicInfo['listingType']+"</td></tr></table></div><div role='tabpanel' class='tab-pane' id="+tab_sellerinfo+"><table><tr><td class='tab_td'><b>User name</b></td><td>"+sellerInfo['sellerUserName']+"</td></tr><tr><td class='tab_td'><b>Feedback score</b></td><td>"+sellerInfo['feedbackScore']+"</td></tr><tr><td class='tab_td'><b>Positive feedback</b></td><td>"+sellerInfo['positiveFeedbackPercent']+"%</td></tr><tr><td class='tab_td'><b>Feedback rating</b></td><td>"+sellerInfo['feedbackRatingStar']+"</td></tr><tr><td class='tab_td'><b>Top rated</b></td>"
+        //             if (sellerInfo['topRatedSeller']=='true'){
+        //                 content+="<td><a href='#' style='color:green'><span class='glyphicon glyphicon-ok'></span></a></td>";
+        //             } 
+        //             else if (sellerInfo['topRatedSeller']=='false'){
+        //                 content+="<td><a href='#' style='color:red'><span class='glyphicon glyphicon-remove'></span></a></td>";
+        //             }    
+        //             content+="</tr><tr><td class='tab_td'><b>Store</b></td>";
+        //             if (sellerInfo['sellerStoreName']==''){
+        //                 content+="<td>N/A</td><tr>";
+        //             }
+        //             else{
+        //                 content+="<td><a href="+sellerInfo['sellerStoreURL']+"target='_Blank'>"+sellerInfo['sellerStoreName']+"</a></td></tr>";
+        //             }
+        //             content+="</table></div><div role='tabpanel' class='tab-pane' id="+tab_shippinginfo+"><table><tr><td class='tab_td'><b>Shipping type</b></td>";
+        //             var shippingTypeArray=shippingInfo['shippingType'];
+        //             var shippingType="";
+        //             for (var j=0;j<shippingTypeArray.length;j++){
+        //                 if (shippingTypeArray.charAt(j)>='A' && shippingTypeArray.charAt(j)<='Z' && j!=0){
+        //                     shippingType+=" "+shippingTypeArray.charAt(j);
+        //                 }
+        //                 else{
+        //                     shippingType+=shippingTypeArray.charAt(j);
+        //                 }
+        //             }
+        //             content+="<td>"+shippingType+"</td></tr><tr><td class='tab_td'><b>Handling time</b></td><td>"+shippingInfo['handlingTime']+"</td></tr><tr><td class='tab_td'><b>Shipping locations</b></td><td>"+shippingInfo['shipToLocations']+"</td></tr><tr><td class='tab_td'><b>Expedited shipping</b></td>";
+        //             if (shippingInfo['expeditedShipping']=='true'){
+        //                 content+="<td><a href='#' style='color:green'><span class='glyphicon glyphicon-ok'></span></a></td>";
+        //             }
+        //             else if (shippingInfo['expeditedShipping']=='false'){
+        //                 content+="<td><a href='#' style='color:red'><span class='glyphicon glyphicon-remove'></span></a></td>";
+        //             }
+        //             content+="</tr><tr><td class='tab_td'><b>One day shipping</b></td>";
+        //             if (shippingInfo['oneDayShippingAvailable']=='true'){
+        //                 content+="<td><a href='#' style='color:green'><span class='glyphicon glyphicon-ok'></span></a></td>";
+        //             }
+        //             else if (shippingInfo['oneDayShippingAvailable']=='false'){
+        //                 content+="<td><a href='#' style='color:red'><span class='glyphicon glyphicon-remove'></span></a></td>";
+        //             }       
+        //             content+="</tr><tr><td class='tab_td'><b>Returns accepted</b></td>";
+        //             if (shippingInfo['returnsAccepted']=='true'){
+        //                 content+="<td><a href='#' style='color:green'><span class='glyphicon glyphicon-ok'></span></a></td>";
+        //             }
+        //             else if (shippingInfo['returnsAccepted']=='false'){
+        //                 content+="<td><a href='#' style='color:red'><span class='glyphicon glyphicon-remove'></span></a></td>";
+        //             }
+        //             content+="</tr></table></div></div></div>";
+        //             content+="</div></div>";
+        //         }
+        //         content+="<nav><ul class='pagination'><li id='previousli'><a id='previous'  aria-label='Previous'><span aria-hidden='true'>&laquo;</span></a></li>";
+        //             for (var p=1;p<=itemCount;p++){
+        //                 if ((parseInt(parseInt(parseInt(parseInt(pageNumber-1)/itemCount)*itemCount)+parseInt(p))-1)*itemCount<parseInt(resultCount)){
+        //                 content+="<li id="+parseInt(parseInt(parseInt(parseInt(pageNumber-1)/itemCount)*itemCount)+parseInt(p))+"><a href='#' onclick='jumpPage(this)'>"+parseInt(parseInt(parseInt(parseInt(pageNumber-1)/itemCount)*itemCount)+parseInt(p))+"</a></li>";
+        //                 }    
+        //             }
+        //             content+="<li id='nextli'><a id='next' onclick='jumpPage(this)' aria-label='Next'><span aria-hidden='true'>&raquo;</span></a></li></ul></nav>";
+        //          display.innerHTML=content;
+        //          var li=document.getElementById(pageNumber);
+        //          if (pageNumber==1){
+        //             var previousli=document.getElementById("previousli");
+        //             previousli.setAttribute("class","disabled");
+        //             var previous=document.getElementById("previous");
+        //             previous.onclick=function(){};
+        //          }
+        //          li.setAttribute("class","active");
+        //         }
+        // }
+
+
+  </script>
+
+</head>
+
+<body>
+
+	
+	<div class＝ "container" style = "padding-top: 10px">
+		<form id = "mainform" class="form-horizontal" onsubmit="javascript:return false">
+			<!-- <div class="ui-widget"> -->
+			<div class="row">
+ 				<div class="col-md-3"></div>
+  				<div class="col-md-6"><center><p class = "capital">Stock Market Search</p></div></center>
+  				<div class="col-md-3"></div>
+			</div>
+
+			<div class="row">
+ 				<div class="col-md-3"> Enter the stock name or symbol: <font color="red">*</font></div>
+  				<div class="col-md-6"> <input type="text" class="form-control" name="" id="autocomplete" required placeholder="Enter"></div>
+  				<div class="col-md-3"> <button id = "b01" type="submit" class="btn btn-primary btn-sm" style = "float: left"> <span class="glyphicon glyphicon-search" aria-hidden="true"></span> Get Quote
+</button> <button type="button" class="btn btn-default btn-sm" style = "float: left" onclick = "re()"> <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span> Clear
+</button>    </div>
+			</div>
+
+			<br> 
+			<div class="row">
+ 				<div class="col-md-3"></div>
+  				<div class="col-md-6"><p id = "test" style = "color:red; margin-bottom: 0"></p></div> 
+  				<div class="col-md-3">Powered By: <img src = "src/mod-logo.png" style = "width: 100px; height: 20px;"></div>
+			</div>
+			</div>
+
+
+
+		</form>
+
+
+
+	
+	</div>
+	<hr class = "hr1">
+
+	    <!-- main content -->
+    <div id="answersection" class="container">
+        <div id="myCarousel" class="carousel slide" data-interval="false">
+           <!-- 轮播（Carousel）项目 -->
+           <div class="carousel-inner">
+              <div class="item active" id = "page1">
+                    <div class="panel panel-default">
+                       <div class="panel-heading">
+                        <div class="row">
+                            <div class="col-md-3">Favourite List</div> 
+                            <div class="col-md-5"></div>
+                            <div class="col-md-4"><center>Automatic Refresh: <input id="toggle-event" type="checkbox" data-toggle="toggle" data-size="normal"><button type="button" class="btn btn-default btn" onclick = "refresh()"> <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span> </button> <a  
+              data-slide="next" id = "nextli" disabled="disabled"> <button type="button" class="btn btn-default" disabled="disabled" id = "nextlink"> <span class="glyphicon glyphicon-menu-right " aria-hidden="true"></span></button> </a> </center> </div> 
+
+                        
+                        </div>
+                       </div>
+                       <div class="panel-body">
+
+                        <table class="table table-striped" id = "table1">
+                          <tr>
+                            <td>Symbol</td>
+                            <td>Company Name</td> 
+                            <td>Stock Price</td>
+                            <td>Change (Change Percent)</td>
+                            <td colspan = 2>Market Cap</td>
+
+
+                          </tr>
+                        
+                        </table>
+
+                       </div>
+                    </div>
+                  
+              </div>
+
+
+              <div class="item" id = "searchresult" >
+                 
+
+                 <div class="panel panel-default">
+                       <div class="panel-heading">
+                        <div class="row">
+                            <div class="col-md-4"><a href="#myCarousel" 
+              data-slide="prev" id = "prevlink"> <button type="button" class="btn btn-default"> <span class="glyphicon glyphicon-menu-left " aria-hidden="true"></span></button> </a></div> 
+                            <div class="col-md-4"><center>Stock Details</center></div>
+                            <div class="col-md-4"> </div> 
+
+                        
+                        </div>
+                       </div>
+                       <div class="panel-body">
+                        <div class="tabbable"> <!-- Only required for left/right tabs -->
+                          <ul class="nav nav-pills">
+                            <li role="presentation" class="active" ><a href="#tab1" data-toggle="tab"><span class = "glyphicon glyphicon-dashboard"></span> Current Stock</a></li>
+                            <li role="presentation"><a href="#tab2" data-toggle="tab" id = "highchart"><span class = "glyphicon glyphicon-stats"></span> Historical Charts</a></li>
+                            <li role="presentation"><a href="#tab3" data-toggle="tab"><span class = "glyphicon glyphicon-link"></span> News Feeds</a></li>
+                          </ul>
+
+                          <div class="tab-content">
+                            <div class="tab-pane active" id="tab1">
+                              <!-- <p>I'm in Section 1.</p> -->
+
+                              <hr>
+                              <div class = "tab-content">
+                                <div class="col-md-6">
+                                    <div class = "row"><h5> Stock Details</h5><br></div>
+
+                                    <div class = "row"> 
+                                        <table class="table table-striped" id = "markettable">
+                                          
+                                        </table>
+
+                                    </div>
+                                </div>
+
+
+                                <div class="col-md-6">
+                                    <div class = "row" align="right" style = "padding-top:10px;"><img src = "src/fb.png" style='width:40px;height:40px' onclick = "shareDialog()">  <button id = "star" type="button" class="btn btn-default" style='width:40px;height:40px;margin-right: 20px;' onclick = "favor()"><span id = "stargraph"style = "" class = "glyphicon glyphicon-star-empty">  </span> </button> </div>
+                                    <div class = "row" style='width: 90%;margin-left:10%;' align = "center" id = "image01">
+                                        
+
+                                    </div>
+
+                                </div>
+
+
+                              </div>
+
+
+                            </div>
+                            <div class="tab-pane" id="tab2">
+                              <hr>
+
+                                <div id="chartDemoContainer" style="height: 500px; min-width: 500px; margin-bottom: 30px;"></div>
+
+                            </div>
+
+                            <div class="tab-pane" id="tab3">
+                                <hr>
+                                
+                                
+                            </div>
+
+                          </div>
+                        </div>
+
+                        <!-- <ul class="nav nav-pills">
+                          <li role="presentation" class="active"><a href="#">Home</a></li>
+                          <li role="presentation"><a href="#">Profile</a></li>
+                          <li role="presentation"><a href="#">Messages</a></li>
+                        </ul> -->
+
+                        
+
+                       </div>
+                    </div>
+
+
+
+
+
+
+              </div>
+
+           </div>
+           <!-- 轮播（Carousel）导航 -->
+<!--            <a href="#myCarousel" 
+              data-slide="prev">&lsaquo;</a> -->
+
+        </div> 
+    </div>   
+
+
+    <script type="text/javascript">
+
+
+        // $('#table1').append('<tr><td><button name = "SB" type="button" class="btn btn-link" value ='+ localStorage.getItem("AAPL")+' onclick = "secondtab(this.value);">'+localStorage.getItem("AAPL")+'</button></td><td>Apple Inc</td> <td name = "SP">102.11</td> <td name = "SC">5(6) </td><td>1billion</td><td><button type="button" class="btn btn-default btn" onclick="deleteRow(this)"> <span class="glyphicon glyphicon-trash" aria-hidden="true"></span> </button> </td> </tr> ');
+
+
+
+        // $('#table1').append('<tr><td><button name = "SB" type="button" class="btn btn-link" value = "GOOG" onclick = "secondtab(this.value);">GOOG</button></td><td>Apple Inc</td> <td name = "SP">102.11</td> <td name = "SC">5(6) </td><td>1billion</td><td><button type="button" class="btn btn-default btn" onclick="deleteRow(this)"> <span class="glyphicon glyphicon-trash" aria-hidden="true"></span> </button> </td> </tr>');
+
+
+        for(var key in localStorage) {
+            // console.log(key);
+
+            createlist(localStorage.getItem(key));
+        }
+
+
+
+    </script>
+
+
+
+
+</body>
+</html>   
+
